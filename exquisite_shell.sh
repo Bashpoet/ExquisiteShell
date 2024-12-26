@@ -6,88 +6,156 @@
 # with subtle comedic transformations thrown in via sed/awk.
 #==============================================================================
 
-# Directory containing your text files from various authors
-TEXT_DIR="./literary_passages"
+# --- Configuration (Defaults) ---
 
-# Number of lines to pick for each snippet
-LINES_PER_SNIPPET=3
+TEXT_DIR="./literary_passages"  # Directory containing your text files
+LINES_PER_SNIPPET=3             # Number of lines per generated snippet
 
-# Ensure the directory exists
-if [ ! -d "$TEXT_DIR" ]; then
-  echo "Directory $TEXT_DIR does not exist. Please create it and add text files."
-  exit 1
-fi
+# --- Functions ---
 
-# Collect all the text files in the directory
-FILES=("$TEXT_DIR"/*)
-if [ ${#FILES[@]} -eq 0 ]; then
-  echo "No text files found in $TEXT_DIR"
-  exit 1
-fi
+# Display help message
+display_help() {
+  echo "Usage: ${0} [-h] [-n NUMBER]"
+  echo
+  echo "Options:"
+  echo "  -h, --help          Display this help message."
+  echo "  -n, --number        Set the number of lines per snippet (default: ${LINES_PER_SNIPPET})."
+  echo
+}
 
-# Generate an "exquisite" snippet
+# Process command-line options
+process_options() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        display_help
+        exit 0
+        ;;
+      -n|--number)
+        if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+          LINES_PER_SNIPPET="$2"
+          shift 2
+        else
+          echo "Error: Invalid number of lines specified." >&2
+          display_help
+          exit 1
+        fi
+        ;;
+      *)
+        echo "Error: Unknown option '$1'." >&2
+        display_help
+        exit 1
+        ;;
+    esac
+  done
+}
+
+# Insert a whimsical word into a line
+insert_whimsical_word() {
+  local line="$1"
+  local words=("snicker" "guffaw" "chuckle" "titter" "cackle")
+  local word="${words[$RANDOM % ${#words[@]}]}"
+
+  # Insert the word after a random word (if possible)
+  echo "$line" | awk -v word="$word" '{
+    if (NF > 1) {
+      pos = int(rand() * NF) + 1;
+      $pos = $pos " " word;
+    }
+    print
+  }'
+}
+
+# Randomly capitalize words or phrases
+random_capitalize() {
+  local line="$1"
+  # Randomly decide to either capitalize a single word or a short phrase
+  if (( RANDOM % 2 == 0 )); then
+    # Capitalize a random word
+    echo "$line" | awk '{
+      if (NF > 0) {
+        pos = int(rand() * NF) + 1;
+        $pos = toupper($pos);
+        print
+      } else {
+        print
+      }
+    }'
+  else
+    # Capitalize a random phrase (up to 3 words)
+    echo "$line" | awk -v seed=$RANDOM '{
+      srand(seed);  # Initialize random number generator
+      if (NF > 2) {
+        start = int(rand() * (NF - 2)) + 1;
+        for (i = start; i < start + 3; i++) {
+          $i = toupper($i);
+        }
+        print
+      } else if (NF > 0){
+        pos = int(rand() * NF) + 1;
+        $pos = toupper($pos);
+        print
+      }
+      else {
+        print
+      }
+    }'
+  fi
+}
+
+# Generate an "exquisite corpse" snippet
 generate_exquisite_snippet() {
-  # We’ll randomly select LINES_PER_SNIPPET lines total.
-  # Each line might come from a random file or from random offsets in the same file—your choice.
-  # Let’s pick each line from a random file for variety:
-
   local lines=()
 
   for ((i=1; i<=LINES_PER_SNIPPET; i++)); do
     # Pick a random file
     local rand_file=${FILES[$RANDOM % ${#FILES[@]}]}
 
-    # Count total lines in the file
-    local total_lines
-    total_lines=$(wc -l < "$rand_file")
-    if [ "$total_lines" -eq 0 ]; then
-      # In case of an empty file or file with no lines
-      continue
+    # Pick a random line number
+    local total_lines=$(wc -l < "$rand_file")
+    if (( total_lines == 0 )); then
+      continue  # Skip empty files
     fi
-
-    # Pick a random line number (1 to total_lines)
     local line_num=$(( (RANDOM % total_lines) + 1 ))
 
     # Extract that line
-    local chosen_line
-    chosen_line=$(sed -n "${line_num}p" "$rand_file")
+    local chosen_line=$(sed -n "${line_num}p" "$rand_file")
 
-    # Let's do a mild transformation or comedic insertion. For instance, 
-    # we insert the word "snicker" randomly in the line using sed or 
-    # we remove a random word using awk.
-    
-    # 1) Insert the word "snicker" after the third word (if there's enough words)
-    # 2) If that fails, use a default snippet
+    # Apply transformations
     local transformed_line
-    transformed_line=$(echo "$chosen_line" | awk '{
-      if (NF >= 3) {
-        $4 = "snicker " $4
-        print
-      } else {
-        print $0
-      }
-    }')
+    transformed_line=$(insert_whimsical_word "$chosen_line")
+    transformed_line=$(random_capitalize "$transformed_line")
+    # Add more transformations here if desired...
 
-    # 3) Let’s randomly uppercase a portion or do some more weirdness:
-    # We'll uppercase the first 5 characters if available
-    transformed_line=$(echo "$transformed_line" | sed -E 's/^(.{5})/\U\1/')
-
-    # Accumulate this line in our array
     lines+=("$transformed_line")
   done
 
-  # Now we join these lines in a whimsical manner:
-  # Insert a random marker or punctuation between them.
+  # Output the snippet
   printf "\n--- Exquisite Shell Corpse (mini-story) ---\n\n"
-
   for line in "${lines[@]}"; do
     echo "$line"
   done
-  
-  echo
   echo "--- End of snippet ---"
   echo
 }
+
+# --- Main Script ---
+
+# Process command-line options
+process_options "$@"
+
+# Ensure the text directory exists
+if [ ! -d "$TEXT_DIR" ]; then
+  echo "Error: Directory '$TEXT_DIR' does not exist. Please create it and add text files." >&2
+  exit 1
+fi
+
+# Collect all text files in the directory
+FILES=("$TEXT_DIR"/*)
+if [ ${#FILES[@]} -eq 0 ]; then
+  echo "Error: No text files found in '$TEXT_DIR'." >&2
+  exit 1
+fi
 
 # Run the generator
 generate_exquisite_snippet
